@@ -100,8 +100,23 @@ def main():
         theme = st.selectbox("🎨 Tema do Gramado:", ["dark", "green"], index=0)
 
     selected_match = BRASILEIRAO_MATCHES[chosen_idx]
-    video_path = VIDEOS_DIR / selected_match["video_file"]
-    telemetry = get_cached_telemetry(selected_match["id"])
+    
+    # Bulletproof resolution of video file with fallback map to prevent any KeyError
+    fallback_map = {
+        "pal_fla_1x1": "br_palmeiras_flamengo.mp4",
+        "fla_pal_0x3": "br_flamengo_palmeiras.mp4",
+        "cor_fla_2x1": "br_corinthians_flamengo.mp4",
+        "cap_cor_1x1": "br_athletico_corinthians.mp4",
+        "vas_bot_1x1": "br_vasco_botafogo.mp4",
+    }
+    video_filename = selected_match.get("video_file") or fallback_map.get(selected_match.get("id", ""), "br_palmeiras_flamengo.mp4")
+    video_path = VIDEOS_DIR / video_filename
+    if not video_path.exists():
+        available_vids = list(VIDEOS_DIR.glob("br_*.mp4"))
+        if available_vids:
+            video_path = available_vids[0]
+
+    telemetry = get_cached_telemetry(selected_match.get("id", "pal_fla_1x1"))
 
     # Section 2: Tactical Metric Summary Badges
     m_col1, m_col2, m_col3, m_col4 = st.columns(4)

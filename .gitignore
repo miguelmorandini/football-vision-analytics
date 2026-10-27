@@ -60,6 +60,8 @@ temp_videos/
 *.mov
 # Keep sample demo clips tracked if needed, ignore large temp downloads
 data/videos/temp_*.mp4
+data/videos/raw_*.mp4
+data/videos/test_*.mp4
 
 # OS Files
 .DS_Store

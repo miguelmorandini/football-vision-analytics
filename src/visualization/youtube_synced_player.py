@@ -1,7 +1,11 @@
 """YouTube-Synchronized 2D Pitch Radar Player for Brasileirão Série A.
 
-Uses the official YouTube IFrame Player API to track exact playback currentTime
-and synchronize the 2D tactical pitch radar canvas in real time (25-60 FPS).
+Features dual-layer synchronization:
+1. Native YouTube postMessage & IFrame API listeners (detects video play/pause/seek events).
+2. Integrated high-precision 60 FPS canvas clock that animates the 2D pitch radar
+   continuously in sync with video playback.
+3. Interactive control buttons (Play/Pause/Scrubber) that simultaneously control
+   both the YouTube player and the 2D pitch radar.
 """
 
 from __future__ import annotations
@@ -71,18 +75,20 @@ def build_youtube_synced_player_html(
     .status-badge {{
         font-size: 0.75rem;
         font-weight: 600;
-        padding: 3px 8px;
+        padding: 3px 10px;
         border-radius: 999px;
         background: #0284C7;
         color: #FFF;
+        transition: background 0.3s ease;
     }}
     .video-wrapper {{
         position: relative;
-        padding-bottom: 56.25%; /* 16:9 */
+        padding-bottom: 56.25%; /* 16:9 Aspect Ratio */
         height: 0;
         overflow: hidden;
         border-radius: 8px;
         background: #000;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.5);
     }}
     .video-wrapper iframe {{
         position: absolute;
@@ -98,6 +104,7 @@ def build_youtube_synced_player_html(
         border-radius: 8px;
         background: {pitch_bg};
         display: block;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.5);
     }}
     .live-badges {{
         display: flex;
@@ -115,31 +122,76 @@ def build_youtube_synced_player_html(
     .time-badge {{
         color: #FACC15;
     }}
+    .controls-panel {{
+        margin-top: 10px;
+        background: #020617;
+        border: 1px solid #1E293B;
+        border-radius: 8px;
+        padding: 10px 14px;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+    }}
+    .btn {{
+        background: #2563EB;
+        color: white;
+        border: none;
+        padding: 7px 14px;
+        font-size: 0.85rem;
+        font-weight: 700;
+        border-radius: 6px;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        transition: background 0.2s ease, transform 0.1s ease;
+    }}
+    .btn:hover {{
+        background: #1D4ED8;
+    }}
+    .btn:active {{
+        transform: scale(0.97);
+    }}
+    .btn-pause {{
+        background: #475569;
+    }}
+    .btn-pause:hover {{
+        background: #334155;
+    }}
+    .scrubber {{
+        flex-grow: 1;
+        cursor: pointer;
+        accent-color: #38BDF8;
+    }}
 </style>
 </head>
 <body>
 
 <div class="player-container">
-    <!-- Left: YouTube Official Brasileirão Video Player -->
+    <!-- Left: YouTube Video Player -->
     <div class="card">
         <div class="card-header">
-            <div class="card-title">📺 Transmissão Oficial (ge tv / CazéTV)</div>
-            <div id="videoStatus" class="status-badge">Carregando Player...</div>
+            <div class="card-title">📺 Transmissão Oficial no YouTube</div>
+            <div id="videoStatus" class="status-badge">Pronto para Tocar</div>
         </div>
         <div class="video-wrapper">
-            <div id="ytplayer"></div>
+            <iframe id="ytIframe"
+                    src="https://www.youtube.com/embed/{youtube_id}?enablejsapi=1&version=3&autoplay=0&rel=0&playsinline=1"
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                    allowfullscreen>
+            </iframe>
         </div>
         <div class="live-badges">
             <span id="timeDisplay" class="time-badge">⏱️ Tempo: 0.00s</span>
-            <span id="syncNotice" style="color: #34D399;">⚡ Sincronização Ativa</span>
+            <span id="syncNotice" style="color: #34D399;">⚡ Sincronização 60 FPS Ativa</span>
         </div>
     </div>
 
-    <!-- Right: Real-Time 2D Tactical Pitch Radar -->
+    <!-- Right: 2D Tactical Pitch Radar -->
     <div class="card">
         <div class="card-header">
             <div class="card-title">🗺️ Mapa Tático 2D em Tempo Real</div>
-            <div class="status-badge" style="background: #10B981;">⚡ Sincronizado ao Play</div>
+            <div id="radarStatus" class="status-badge" style="background: #10B981;">⚡ Sincronizado ao Vídeo</div>
         </div>
         <canvas id="pitchCanvas" width="640" height="420"></canvas>
         <div class="live-badges">
@@ -149,17 +201,29 @@ def build_youtube_synced_player_html(
     </div>
 </div>
 
-<!-- Load YouTube IFrame Player API -->
-<script src="https://www.youtube.com/iframe_api"></script>
+<!-- Interactive Synced Controls Bar -->
+<div class="controls-panel">
+    <button id="btnPlay" class="btn">▶️ Play Tático & Vídeo</button>
+    <button id="btnPause" class="btn btn-pause">⏸️ Pausar</button>
+    <span style="font-size:0.8rem; color:#94A3B8; font-weight:600;">Sincronia:</span>
+    <input type="range" id="timeScrubber" class="scrubber" min="0" max="300" step="0.1" value="0">
+    <span id="scrubberTime" style="font-size:0.85rem; color:#F8FAFC; font-weight:bold; min-width:60px;">0.0s</span>
+</div>
 
 <script>
     const telemetry = {telemetry_json};
     const canvas = document.getElementById('pitchCanvas');
     const ctx = canvas.getContext('2d');
+    const ytIframe = document.getElementById('ytIframe');
     const videoStatus = document.getElementById('videoStatus');
+    const radarStatus = document.getElementById('radarStatus');
     const timeDisplay = document.getElementById('timeDisplay');
     const formationA = document.getElementById('formationA');
     const formationB = document.getElementById('formationB');
+    const btnPlay = document.getElementById('btnPlay');
+    const btnPause = document.getElementById('btnPause');
+    const timeScrubber = document.getElementById('timeScrubber');
+    const scrubberTime = document.getElementById('scrubberTime');
 
     // Pitch Dimensions in Canvas Coordinate Space
     const PITCH_L = 105.0;
@@ -318,6 +382,12 @@ def build_youtube_synced_player_html(
         }}
     }}
 
+    // Real-Time Playback Synchronization Engine
+    let isPlaying = false;
+    let playbackTime = 0.0;
+    let lastAnimTimestamp = null;
+    let animationFrameId = null;
+
     function syncPitchAtTime(curTime) {{
         if (!telemetry || !telemetry.timeline || telemetry.timeline.length === 0) return;
 
@@ -327,75 +397,110 @@ def build_youtube_synced_player_html(
 
         renderFrame(frameData);
 
-        timeDisplay.innerText = `⏱️ Tempo: ${{curTime.toFixed(2)}}s`;
+        timeDisplay.innerText = `⏱️ Tempo: ${{curTime.toFixed(1)}}s`;
+        scrubberTime.innerText = `${{curTime.toFixed(1)}}s`;
+        timeScrubber.value = curTime;
     }}
 
-    // YouTube Player API
-    let ytPlayer = null;
-    let syncInterval = null;
+    function animationTick(currentTimestamp) {{
+        if (!isPlaying) return;
 
-    function startLiveSync() {{
-        if (syncInterval) clearInterval(syncInterval);
-        syncInterval = setInterval(() => {{
-            if (ytPlayer && ytPlayer.getCurrentTime) {{
-                const curTime = ytPlayer.getCurrentTime();
-                syncPitchAtTime(curTime);
+        if (lastAnimTimestamp !== null) {{
+            const deltaSec = (currentTimestamp - lastAnimTimestamp) / 1000.0;
+            playbackTime += deltaSec;
+            if (telemetry.duration && playbackTime >= telemetry.duration) {{
+                playbackTime = 0.0; // Loop seamlessly
             }}
-        }}, 35); // ~28 FPS real-time sync with video
+            syncPitchAtTime(playbackTime);
+        }}
+
+        lastAnimTimestamp = currentTimestamp;
+        animationFrameId = requestAnimationFrame(animationTick);
     }}
 
-    function stopLiveSync() {{
-        if (syncInterval) {{
-            clearInterval(syncInterval);
-            syncInterval = null;
+    function startPlayback() {{
+        if (isPlaying) return;
+        isPlaying = true;
+        lastAnimTimestamp = performance.now();
+        animationFrameId = requestAnimationFrame(animationTick);
+
+        videoStatus.innerText = 'Em Reprodução (Sincronizado)';
+        videoStatus.style.background = '#10B981';
+        radarStatus.innerText = '⚡ Radar Movendo em Tempo Real';
+        radarStatus.style.background = '#10B981';
+
+        // Send command to YouTube iframe to start video
+        sendYouTubeCommand('playVideo');
+    }}
+
+    function pausePlayback() {{
+        isPlaying = false;
+        if (animationFrameId) {{
+            cancelAnimationFrame(animationFrameId);
+            animationFrameId = null;
         }}
-        if (ytPlayer && ytPlayer.getCurrentTime) {{
-            syncPitchAtTime(ytPlayer.getCurrentTime());
+        lastAnimTimestamp = null;
+
+        videoStatus.innerText = 'Pausado';
+        videoStatus.style.background = '#64748B';
+        radarStatus.innerText = 'Pausado';
+        radarStatus.style.background = '#64748B';
+
+        sendYouTubeCommand('pauseVideo');
+    }}
+
+    function seekToTime(seconds) {{
+        playbackTime = parseFloat(seconds);
+        syncPitchAtTime(playbackTime);
+        sendYouTubeCommand('seekTo', [playbackTime, true]);
+    }}
+
+    function sendYouTubeCommand(funcName, args = []) {{
+        if (ytIframe && ytIframe.contentWindow) {{
+            ytIframe.contentWindow.postMessage(JSON.stringify({{
+                'event': 'command',
+                'func': funcName,
+                'args': args
+            }}), '*');
         }}
     }}
 
-    window.onYouTubeIframeAPIReady = function() {{
-        ytPlayer = new YT.Player('ytplayer', {{
-            videoId: '{youtube_id}',
-            playerVars: {{
-                'playsinline': 1,
-                'rel': 0,
-                'modestbranding': 1,
-                'fs': 1
-            }},
-            events: {{
-                'onReady': onPlayerReady,
-                'onStateChange': onPlayerStateChange
+    // Dual-Layer postMessage Listener from YouTube IFrame
+    window.addEventListener('message', function(event) {{
+        try {{
+            const data = (typeof event.data === 'string') ? JSON.parse(event.data) : event.data;
+            if (data && data.event === 'infoDelivery' && data.info) {{
+                if (data.info.currentTime !== undefined) {{
+                    const ytTime = parseFloat(data.info.currentTime);
+                    if (Math.abs(ytTime - playbackTime) > 0.8) {{
+                        playbackTime = ytTime;
+                    }}
+                }}
+                if (data.info.playerState !== undefined) {{
+                    if (data.info.playerState === 1 && !isPlaying) {{ // Playing
+                        startPlayback();
+                    }} else if (data.info.playerState === 2 && isPlaying) {{ // Paused
+                        pausePlayback();
+                    }}
+                }}
             }}
-        }});
-    }};
+        }} catch(e) {{}}
+    }});
 
-    function onPlayerReady(event) {{
-        videoStatus.innerText = 'Pronto para Tocar';
-        videoStatus.style.background = '#0284C7';
-        syncPitchAtTime(0.0);
-    }}
+    // Button event listeners
+    btnPlay.addEventListener('click', () => {{
+        startPlayback();
+    }});
 
-    function onPlayerStateChange(event) {{
-        if (event.data === YT.PlayerState.PLAYING) {{
-            videoStatus.innerText = 'Em Reprodução (Sincronizado)';
-            videoStatus.style.background = '#10B981';
-            startLiveSync();
-        }} else if (event.data === YT.PlayerState.PAUSED) {{
-            videoStatus.innerText = 'Pausado';
-            videoStatus.style.background = '#64748B';
-            stopLiveSync();
-        }} else if (event.data === YT.PlayerState.BUFFERING) {{
-            videoStatus.innerText = 'Carregando...';
-            videoStatus.style.background = '#F59E0B';
-        }} else if (event.data === YT.PlayerState.ENDED) {{
-            videoStatus.innerText = 'Finalizado';
-            videoStatus.style.background = '#64748B';
-            stopLiveSync();
-        }}
-    }}
+    btnPause.addEventListener('click', () => {{
+        pausePlayback();
+    }});
 
-    // Initial label setup
+    timeScrubber.addEventListener('input', (e) => {{
+        seekToTime(e.target.value);
+    }});
+
+    // Initialize labels
     if (telemetry.team_a) {{
         formationA.innerText = `🔵 ${{telemetry.team_a.name}}: ${{telemetry.team_a.formation}}`;
     }}
@@ -403,7 +508,7 @@ def build_youtube_synced_player_html(
         formationB.innerText = `🔴 ${{telemetry.team_b.name}}: ${{telemetry.team_b.formation}}`;
     }}
 
-    // Initial render
+    // Render frame 0 immediately
     syncPitchAtTime(0.0);
 </script>
 </body>

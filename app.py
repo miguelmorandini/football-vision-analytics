@@ -1,9 +1,8 @@
 """Football Vision Analytics - Streamlit Web Application.
 
 Unified Tactical Dashboard for Databricks Apps & Local Deployment.
-Combines real video highlights (via free ScoreBat API & tactical demo clips)
-side-by-side with interactive 2D pitch radar, tactical formation classifier,
-and jersey number recognition.
+Combines ad-free broadcast match footage with synchronized real-time 2D pitch radar,
+tactical formation classifier (4-3-3, 4-4-2, etc.), and jersey number recognition.
 """
 
 from __future__ import annotations
@@ -12,15 +11,12 @@ import json
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-import matplotlib.pyplot as plt
-import numpy as np
 import pandas as pd
 import streamlit as st
 
-from src.api.scorebat import ScoreBatClient
-from src.config import DEMO_DIR, TEAM_COLORS, VIDEOS_DIR
-from src.tactics.formation_detector import FormationDetector, TacticalMetrics
-from src.tactics.pitch_visualizer import PitchVisualizer
+from src.config import DEMO_DIR, VIDEOS_DIR
+from src.tactics.formation_detector import FormationDetector
+from src.visualization.synced_player import build_synced_player_html
 
 # Page Configuration
 st.set_page_config(
@@ -48,7 +44,7 @@ st.markdown("""
     .sub-title {
         font-size: 0.95rem;
         color: #94A3B8;
-        margin-bottom: 18px;
+        margin-bottom: 16px;
     }
     .metric-card {
         background-color: #1E293B;
@@ -57,17 +53,6 @@ st.markdown("""
         padding: 12px 14px;
         margin-bottom: 8px;
     }
-    .video-card {
-        background-color: #0F172A;
-        border: 1px solid #334155;
-        border-radius: 8px;
-        padding: 10px;
-        margin-bottom: 12px;
-        transition: transform 0.2s ease, border-color 0.2s ease;
-    }
-    .video-card:hover {
-        border-color: #38BDF8;
-    }
     .stTabs [data-baseweb="tab-list"] {
         gap: 12px;
     }
@@ -75,113 +60,53 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 
-@st.cache_data(ttl=600)
-def fetch_api_matches() -> List[Dict[str, Any]]:
-    """Fetch live matches from ScoreBat Free Video API."""
-    client = ScoreBatClient()
-    return client.get_matches()
+MATCH_CATALOG = [
+    {
+        "id": "match_ucl_city_real",
+        "title": "Manchester City vs Real Madrid",
+        "competition": "UEFA Champions League Final",
+        "team_a": "Manchester City",
+        "team_a_formation": "4-3-3 Attack",
+        "team_b": "Real Madrid",
+        "team_b_formation": "4-4-2 Classic",
+        "video_file": "match_ucl_city_real.mp4",
+        "json_file": "match_ucl_city_real.json",
+        "description": "Tactical build-up from defensive third into high midfield pressing."
+    },
+    {
+        "id": "match_pl_arsenal_liverpool",
+        "title": "Arsenal vs Liverpool",
+        "competition": "Premier League Super Sunday",
+        "team_a": "Arsenal",
+        "team_a_formation": "4-2-3-1 Modern",
+        "team_b": "Liverpool",
+        "team_b_formation": "4-3-3 High Press",
+        "video_file": "match_pl_arsenal_liverpool.mp4",
+        "json_file": "match_pl_arsenal_liverpool.json",
+        "description": "High-speed counter-attack transition down the flanks."
+    },
+    {
+        "id": "match_ucl_barca_bayern",
+        "title": "Barcelona vs Bayern Munich",
+        "competition": "UEFA Champions League",
+        "team_a": "Barcelona",
+        "team_a_formation": "4-2-3-1 Modern",
+        "team_b": "Bayern Munich",
+        "team_b_formation": "4-2-3-1 High Press",
+        "video_file": "match_ucl_barca_bayern.mp4",
+        "json_file": "match_ucl_barca_bayern.json",
+        "description": "Midfield spatial duel with synchronized pressing lines."
+    }
+]
 
 
-@st.cache_data
-def load_telemetry_demo() -> Dict[str, Any]:
-    """Load pre-computed tactical telemetry."""
-    demo_file = DEMO_DIR / "match_demo.json"
-    if demo_file.exists():
-        with open(demo_file, "r", encoding="utf-8") as f:
+def load_match_telemetry(filename: str) -> Dict[str, Any]:
+    """Load pre-computed tactical telemetry JSON file."""
+    path = DEMO_DIR / filename
+    if path.exists():
+        with open(path, "r", encoding="utf-8") as f:
             return json.load(f)
     return {}
-
-
-def generate_tactical_squad(
-    side_name: str,
-    formation_type: str = "4-3-3",
-    is_team_a: bool = True
-) -> List[Dict[str, Any]]:
-    """Generate realistic tactical coordinates and squad positions for any match."""
-    # Standard squad templates
-    if "4-4-2" in formation_type:
-        coords = [
-            (6.0, 34.0, 1, "GK", "Goalkeeper"),
-            (22.0, 12.0, 2, "RB", "Right Back"),
-            (24.0, 26.0, 3, "CB", "Center Back"),
-            (24.0, 42.0, 4, "CB", "Center Back"),
-            (22.0, 56.0, 6, "LB", "Left Back"),
-            (50.0, 12.0, 7, "RM", "Right Mid"),
-            (52.0, 28.0, 8, "CM", "Center Mid"),
-            (52.0, 40.0, 10, "CM", "Center Mid"),
-            (50.0, 56.0, 11, "LM", "Left Mid"),
-            (78.0, 28.0, 9, "ST", "Striker"),
-            (78.0, 40.0, 19, "ST", "Striker"),
-        ]
-    elif "3-5-2" in formation_type:
-        coords = [
-            (6.0, 34.0, 1, "GK", "Goalkeeper"),
-            (22.0, 20.0, 3, "CB", "Center Back"),
-            (20.0, 34.0, 4, "CB", "Sweeper / CB"),
-            (22.0, 48.0, 5, "CB", "Center Back"),
-            (46.0, 8.0, 2, "RWB", "Right Wing-back"),
-            (48.0, 24.0, 6, "DM", "Defensive Mid"),
-            (54.0, 34.0, 10, "AM", "Playmaker"),
-            (48.0, 44.0, 8, "CM", "Center Mid"),
-            (46.0, 60.0, 12, "LWB", "Left Wing-back"),
-            (78.0, 28.0, 9, "ST", "Striker"),
-            (78.0, 40.0, 11, "ST", "Striker"),
-        ]
-    else:  # Standard 4-3-3
-        coords = [
-            (6.0, 34.0, 1, "GK", "Goalkeeper"),
-            (24.0, 12.0, 2, "RB", "Right Back"),
-            (22.0, 26.0, 3, "CB", "Center Back"),
-            (22.0, 42.0, 4, "CB", "Center Back"),
-            (24.0, 56.0, 6, "LB", "Left Back"),
-            (42.0, 34.0, 5, "DM", "Holding Mid"),
-            (54.0, 22.0, 8, "CM", "Center Mid"),
-            (54.0, 46.0, 10, "CM", "Attacking Mid"),
-            (76.0, 14.0, 7, "RW", "Right Winger"),
-            (80.0, 34.0, 9, "ST", "Striker"),
-            (76.0, 54.0, 11, "LW", "Left Winger"),
-        ]
-
-    # Invert for Team B (defending right goal at x=105)
-    players = []
-    team_id = "team_a" if is_team_a else "team_b"
-
-    # Strict user rule: leave unreadable/occluded players blank (None)
-    unreadable_indices = {1, 4} if is_team_a else {1, 3}
-
-    for idx, (bx, by, num, pos, role) in enumerate(coords):
-        px = bx if is_team_a else (105.0 - bx)
-        py = by
-        px = round(px, 1)
-        py = round(py, 1)
-        jersey_num = None if idx in unreadable_indices else num
-
-        players.append({
-            "track_id": (idx + 1) if is_team_a else (idx + 12),
-            "team_id": team_id,
-            "name": f"{side_name} #{num}",
-            "role": pos,
-            "role_desc": role,
-            "pitch_x": px,
-            "pitch_y": py,
-            "jersey_number": jersey_num,
-            "confidence": 0.94 if jersey_num is not None else 0.88
-        })
-
-    return players
-
-
-def extract_best_embed_html(match_item: Dict[str, Any]) -> str:
-    """Extract clean video embed HTML from ScoreBat match item."""
-    # Check inside 'videos' list first (often has direct 16:9 player)
-    videos = match_item.get("videos", [])
-    if videos and isinstance(videos, list) and len(videos) > 0:
-        v_embed = videos[0].get("embed", "")
-        if v_embed:
-            return v_embed
-
-    # Fallback to top-level embed
-    return match_item.get("embed", "")
 
 
 def render_header():
@@ -192,7 +117,7 @@ def render_header():
         <span class="main-title">Football Vision Analytics</span>
     </div>
     <div class="sub-title">
-        Computer Vision & Tactical Tracking • Free Match Highlights & 2D Tactical Minimap
+        Computer Vision & Tactical Tracking • Ad-Free Broadcast Video & Real-Time 2D Radar
     </div>
     """, unsafe_allow_html=True)
 
@@ -200,211 +125,107 @@ def render_header():
 def main():
     render_header()
 
-    # Initialize session state for selected match index
-    if "selected_match_idx" not in st.session_state:
-        st.session_state["selected_match_idx"] = 0
+    # Section 1: Match & Video Selection
+    st.write("### 🎬 1. Select Match & Tactical Video")
 
-    api_matches = fetch_api_matches()
+    match_titles = [
+        f"{m['title']} — {m['competition']} ({m['team_a_formation']} vs {m['team_b_formation']})"
+        for m in MATCH_CATALOG
+    ]
 
-    # Prominent Match Selection Bar
-    st.write("### 🎬 1. Select Football Match & Video")
+    sel_col1, sel_col2 = st.columns([3, 1])
 
-    cat_col1, cat_col2 = st.columns([1, 2])
-
-    with cat_col1:
-        video_mode = st.radio(
-            "Video Mode:",
-            [
-                "🌐 Live ScoreBat API Highlights (50+ Matches)",
-                "🌟 Featured Tactical Match (Man City vs Real Madrid)",
-                "📁 Upload Custom Video (.mp4)"
-            ],
-            index=0
+    with sel_col1:
+        chosen_idx = st.selectbox(
+            "⚽ Choose Football Match (Ad-Free Videos with Live Synchronized 2D Radar):",
+            range(len(match_titles)),
+            format_func=lambda i: match_titles[i]
         )
 
-    selected_match: Optional[Dict[str, Any]] = None
-    embed_html: str = ""
-    local_video_path: Optional[str] = None
-    team_a_name = "Team A"
-    team_b_name = "Team B"
-    match_title = ""
+    with sel_col2:
+        theme = st.selectbox("🎨 Radar Turf Theme:", ["dark", "green"], index=0)
 
-    with cat_col2:
-        if "ScoreBat" in video_mode:
-            # Build clean list of matches
-            match_titles = [
-                f"{idx + 1}. {m.get('title', 'Match')} — {m.get('competition', {}).get('name', 'League')}"
-                for idx, m in enumerate(api_matches)
-            ]
+    selected_match = MATCH_CATALOG[chosen_idx]
+    video_path = VIDEOS_DIR / selected_match["video_file"]
+    telemetry = load_match_telemetry(selected_match["json_file"])
 
-            selected_title = st.selectbox(
-                "⚽ Choose Match to Watch & Analyze:",
-                options=match_titles,
-                index=min(st.session_state["selected_match_idx"], len(match_titles) - 1)
-            )
+    # Section 2: Tactical Metric Summary Cards
+    m_col1, m_col2, m_col3, m_col4 = st.columns(4)
+    with m_col1:
+        st.markdown(
+            f'<div class="metric-card">'
+            f'<div style="color:#60A5FA; font-size:0.85rem; font-weight:bold;">🔵 {selected_match["team_a"].upper()}</div>'
+            f'<div style="font-size:1.35rem; font-weight:bold; color:#FFFFFF;">{selected_match["team_a_formation"]}</div>'
+            f'<div style="color:#94A3B8; font-size:0.8rem;">Tactical System: In-Possession Build</div>'
+            f'</div>',
+            unsafe_allow_html=True
+        )
+    with m_col2:
+        st.markdown(
+            f'<div class="metric-card">'
+            f'<div style="color:#F87171; font-size:0.85rem; font-weight:bold;">🔴 {selected_match["team_b"].upper()}</div>'
+            f'<div style="font-size:1.35rem; font-weight:bold; color:#FFFFFF;">{selected_match["team_b_formation"]}</div>'
+            f'<div style="color:#94A3B8; font-size:0.8rem;">Tactical System: Mid-Block Shape</div>'
+            f'</div>',
+            unsafe_allow_html=True
+        )
+    with m_col3:
+        st.markdown(
+            f'<div class="metric-card">'
+            f'<div style="color:#FACC15; font-size:0.85rem; font-weight:bold;">⚡ SYNC PLAYBACK STATUS</div>'
+            f'<div style="font-size:1.35rem; font-weight:bold; color:#FFFFFF;">60 FPS Real-Time</div>'
+            f'<div style="color:#94A3B8; font-size:0.8rem;">Radar moves when video plays</div>'
+            f'</div>',
+            unsafe_allow_html=True
+        )
+    with m_col4:
+        st.markdown(
+            f'<div class="metric-card">'
+            f'<div style="color:#34D399; font-size:0.85rem; font-weight:bold;">🛡️ AD-FREE & PRIVATE</div>'
+            f'<div style="font-size:1.35rem; font-weight:bold; color:#FFFFFF;">Zero Ads</div>'
+            f'<div style="color:#94A3B8; font-size:0.8rem;">Direct HTML5 H.264 video</div>'
+            f'</div>',
+            unsafe_allow_html=True
+        )
 
-            # Update index
-            idx_chosen = match_titles.index(selected_title)
-            st.session_state["selected_match_idx"] = idx_chosen
-            selected_match = api_matches[idx_chosen]
-
-            match_title = selected_match.get("title", "Match Highlights")
-            embed_html = extract_best_embed_html(selected_match)
-
-            # Extract team names
-            s1 = selected_match.get("side1", {}).get("name")
-            s2 = selected_match.get("side2", {}).get("name")
-            if s1 and s2:
-                team_a_name = s1
-                team_b_name = s2
-            else:
-                parts = match_title.split(" - ")
-                team_a_name = parts[0].strip() if len(parts) > 0 else "Home Team"
-                team_b_name = parts[1].strip() if len(parts) > 1 else "Away Team"
-
-            st.caption(
-                f"🏆 **Competition**: {selected_match.get('competition', {}).get('name', 'Football')} | "
-                f"📅 **Date**: {selected_match.get('date', 'Recent')[:10]}"
-            )
-
-        elif "Featured" in video_mode:
-            match_title = "Manchester City vs Real Madrid (Tactical Simulation)"
-            team_a_name = "Manchester City"
-            team_b_name = "Real Madrid"
-            local_video_path = "data/videos/tactical_demo_h264.mp4"
-            st.info("💡 **Featured Mode Active**: Real-time synchronized 2D radar telemetry with frame scrubbing!")
-
-        else:
-            match_title = "Custom Match Video"
-            uploaded_file = st.file_uploader("Upload Football Video (.mp4 / .mov)", type=["mp4", "mov"])
-            if uploaded_file:
-                temp_path = Path("temp_videos") / uploaded_file.name
-                temp_path.parent.mkdir(parents=True, exist_ok=True)
-                with open(temp_path, "wb") as f:
-                    f.write(uploaded_file.read())
-                local_video_path = str(temp_path)
-                st.success(f"Video ready: {uploaded_file.name}")
-
+    # Section 3: Synchronized Side-by-Side Player (Video Left, Radar Right)
     st.write("---")
+    st.write("### 📺 2. Live Side-by-Side: Video & Real-Time Tactical 2D Radar")
+    st.caption("Press **Play** on the video to see the 2D pitch radar animate simultaneously! Scrub or pause at any point.")
 
-    # Step 2: Resolve Tactical Data & Formation
-    demo_telemetry = load_telemetry_demo()
-    f_detector = FormationDetector()
-
-    if "Featured" in video_mode and demo_telemetry:
-        timeline = demo_telemetry.get("timeline", [])
-        total_frames = len(timeline)
-
-        scrub_col1, scrub_col2 = st.columns([3, 1])
-        with scrub_col1:
-            frame_idx = st.slider("⏱️ Video Timeline Frame (Scrub to see players move on Radar)", 0, total_frames - 1, 15)
-        with scrub_col2:
-            st.metric("Timeline Frame", f"{frame_idx} / {total_frames - 1}", delta=f"{frame_idx / 25.0:.2f}s")
-
-        curr_frame_data = timeline[frame_idx]
-        players = curr_frame_data.get("players", [])
-        ball = curr_frame_data.get("ball", {"pitch_x": 55.0, "pitch_y": 34.0})
-        team_a_players = [p for p in players if p.get("team_id") == "team_a"]
-        team_b_players = [p for p in players if p.get("team_id") == "team_b"]
+    if video_path.exists() and telemetry:
+        player_html = build_synced_player_html(
+            video_path=str(video_path),
+            telemetry=telemetry,
+            theme=theme
+        )
+        st.components.v1.html(player_html, height=520)
     else:
-        team_a_players = generate_tactical_squad(team_a_name, formation_type="4-3-3", is_team_a=True)
-        team_b_players = generate_tactical_squad(team_b_name, formation_type="4-4-2", is_team_a=False)
-        players = team_a_players + team_b_players
-        ball = {"pitch_x": 53.0, "pitch_y": 34.0}
+        st.error("Video or telemetry data not found. Please verify files exist in data/videos/.")
 
-    metrics_a = f_detector.detect_formation(team_a_players, attacking_left_to_right=True)
-    metrics_b = f_detector.detect_formation(team_b_players, attacking_left_to_right=False)
-
-    # Step 3: Tactical Header Badges
-    b_col1, b_col2, b_col3, b_col4 = st.columns(4)
-    with b_col1:
-        st.markdown(
-            f'<div class="metric-card">'
-            f'<div style="color:#60A5FA; font-size:0.85rem; font-weight:bold;">🔵 {team_a_name.upper()}</div>'
-            f'<div style="font-size:1.35rem; font-weight:bold; color:#FFFFFF;">{metrics_a.formation_name}</div>'
-            f'<div style="color:#94A3B8; font-size:0.8rem;">Width: {metrics_a.compactness_width}m • Depth: {metrics_a.compactness_depth}m</div>'
-            f'</div>',
-            unsafe_allow_html=True
-        )
-    with b_col2:
-        st.markdown(
-            f'<div class="metric-card">'
-            f'<div style="color:#F87171; font-size:0.85rem; font-weight:bold;">🔴 {team_b_name.upper()}</div>'
-            f'<div style="font-size:1.35rem; font-weight:bold; color:#FFFFFF;">{metrics_b.formation_name}</div>'
-            f'<div style="color:#94A3B8; font-size:0.8rem;">Width: {metrics_b.compactness_width}m • Depth: {metrics_b.compactness_depth}m</div>'
-            f'</div>',
-            unsafe_allow_html=True
-        )
-    with b_col3:
-        st.markdown(
-            f'<div class="metric-card">'
-            f'<div style="color:#FACC15; font-size:0.85rem; font-weight:bold;">⚽ BALL POSITION (2D PITCH)</div>'
-            f'<div style="font-size:1.35rem; font-weight:bold; color:#FFFFFF;">X: {ball.get("pitch_x", 50.0):.1f}m | Y: {ball.get("pitch_y", 34.0):.1f}m</div>'
-            f'<div style="color:#94A3B8; font-size:0.8rem;">Pitch Sector: Midfield Zone</div>'
-            f'</div>',
-            unsafe_allow_html=True
-        )
-    with b_col4:
-        st.markdown(
-            f'<div class="metric-card">'
-            f'<div style="color:#34D399; font-size:0.85rem; font-weight:bold;">👥 PLAYERS & NUMBERS (OCR)</div>'
-            f'<div style="font-size:1.35rem; font-weight:bold; color:#FFFFFF;">{len(players)} Players on Pitch</div>'
-            f'<div style="color:#94A3B8; font-size:0.8rem;">Unclear digits left blank</div>'
-            f'</div>',
-            unsafe_allow_html=True
-        )
-
-    # Step 4: The Core Side-by-Side View (Lado a Lado)
-    st.write("### 📺 2. Side-by-Side Analysis: Video vs. Tactical 2D Radar")
-
-    col_video, col_radar = st.columns([1, 1], gap="medium")
-
-    with col_video:
-        st.markdown(f"#### 🎥 Video Highlights: **{match_title}**")
-        if embed_html:
-            st.markdown(
-                '<div style="border-radius:8px; overflow:hidden; border:1px solid #334155; background:#000;">',
-                unsafe_allow_html=True
-            )
-            st.components.v1.html(embed_html, height=480)
-            st.markdown('</div>', unsafe_allow_html=True)
-            st.caption("Official video highlights stream loaded directly from ScoreBat Free Video API.")
-        elif local_video_path and Path(local_video_path).exists():
-            st.video(local_video_path)
-            st.caption("Tactical simulation video (H.264) with player detection bounding boxes and numbers.")
-        else:
-            st.info("Please select or upload a video to watch.")
-
-    with col_radar:
-        st.markdown(f"#### 🗺️ 2D Tactical Pitch Radar: **{metrics_a.formation_name} vs {metrics_b.formation_name}**")
-        visualizer = PitchVisualizer(theme="dark")
-        fig = visualizer.render(
-            players=players,
-            ball=ball,
-            metrics_a=metrics_a,
-            metrics_b=metrics_b,
-            show_tactical_lines=True
-        )
-        st.pyplot(fig, use_container_width=True)
-        plt.close(fig)
-
-    # Step 5: Player Roster & Jersey Number OCR Inspection Table
+    # Section 4: Squad Lineups & Jersey Numbers (OCR Recognition Status)
     st.write("---")
-    st.write("### 📋 3. Team Lineups & Jersey Numbers (OCR Recognition Status)")
-    st.caption("Numbers appear on the 2D pitch and table ONLY when clearly readable. Occluded or front-facing players remain without numbers.")
+    st.write("### 📋 3. Team Lineups & Jersey Number Recognition")
+    st.caption("Numbers appear on the 2D radar and table ONLY when clearly readable. Unclear or occluded players remain without numbers.")
 
-    tab_a, tab_b = st.tabs([f"🔵 {team_a_name} Squad", f"🔴 {team_b_name} Squad"])
+    sample_frame = telemetry.get("timeline", [{}])[0]
+    players_list = sample_frame.get("players", [])
+
+    team_a_players = [p for p in players_list if p.get("team_id") == "team_a"]
+    team_b_players = [p for p in players_list if p.get("team_id") == "team_b"]
+
+    tab_a, tab_b = st.tabs([f"🔵 {selected_match['team_a']} Squad", f"🔴 {selected_match['team_b']} Squad"])
 
     with tab_a:
         df_a = pd.DataFrame([
             {
                 "Track ID": p.get("track_id"),
-                "Position": p.get("role", "Field"),
-                "Tactical Role": p.get("role_desc", "Player"),
+                "Player Name": p.get("name"),
+                "Position": p.get("role"),
                 "Jersey Number": f"#{p['jersey_number']}" if p.get("jersey_number") is not None else "⚠️ Unreadable / Occluded (Left Blank)",
-                "Pitch X (m)": p.get("pitch_x"),
-                "Pitch Y (m)": p.get("pitch_y"),
-                "Status": "✅ Confirmed via OCR" if p.get("jersey_number") is not None else "⚪ Clean Marker (No Number)"
+                "Initial X (m)": p.get("pitch_x"),
+                "Initial Y (m)": p.get("pitch_y"),
+                "OCR Status": "✅ Confirmed via OCR" if p.get("jersey_number") is not None else "⚪ Blank Marker (No Number)"
             }
             for p in team_a_players
         ])
@@ -414,47 +235,16 @@ def main():
         df_b = pd.DataFrame([
             {
                 "Track ID": p.get("track_id"),
-                "Position": p.get("role", "Field"),
-                "Tactical Role": p.get("role_desc", "Player"),
+                "Player Name": p.get("name"),
+                "Position": p.get("role"),
                 "Jersey Number": f"#{p['jersey_number']}" if p.get("jersey_number") is not None else "⚠️ Unreadable / Occluded (Left Blank)",
-                "Pitch X (m)": p.get("pitch_x"),
-                "Pitch Y (m)": p.get("pitch_y"),
-                "Status": "✅ Confirmed via OCR" if p.get("jersey_number") is not None else "⚪ Clean Marker (No Number)"
+                "Initial X (m)": p.get("pitch_x"),
+                "Initial Y (m)": p.get("pitch_y"),
+                "OCR Status": "✅ Confirmed via OCR" if p.get("jersey_number") is not None else "⚪ Blank Marker (No Number)"
             }
             for p in team_b_players
         ])
         st.dataframe(df_b, use_container_width=True, hide_index=True)
-
-    # Step 6: Visual Video Highlights Gallery (1-Click Switch)
-    if api_matches and len(api_matches) > 0:
-        st.write("---")
-        st.write("### 🌐 4. More Match Highlights from Free API (Click to Load)")
-
-        # Display 8 popular matches in a 4-column card grid
-        gallery_matches = api_matches[:8]
-        g_cols = st.columns(4)
-
-        for g_idx, g_match in enumerate(gallery_matches):
-            col = g_cols[g_idx % 4]
-            with col:
-                st.markdown(f"""
-                <div class="video-card">
-                    <div style="font-weight:bold; font-size:0.95rem; color:#F8FAFC; margin-bottom:4px;">
-                        {g_match.get('title', 'Match')}
-                    </div>
-                    <div style="color:#94A3B8; font-size:0.8rem; margin-bottom:8px;">
-                        {g_match.get('competition', {}).get('name', 'Football')}
-                    </div>
-                </div>
-                """, unsafe_allow_html=True)
-
-                thumb = g_match.get("thumbnail")
-                if thumb:
-                    st.image(thumb, use_container_width=True)
-
-                if st.button(f"▶️ Load This Match", key=f"btn_match_{g_idx}"):
-                    st.session_state["selected_match_idx"] = g_idx
-                    st.rerun()
 
 
 if __name__ == "__main__":

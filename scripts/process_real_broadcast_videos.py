@@ -193,75 +193,50 @@ def process_match_clip(
                 team_b_coords.append(item)
 
         # -------------------------------------------------------------
-        # 1. TACTICAL FORMATION LINES DIRECTLY ON THE BROADCAST TURF
+        # TACTICAL FORMATION LINES ONLY (NO NAMES, NO NUMBERS ON VIDEO)
         # -------------------------------------------------------------
-        # Team A formation line
+        def draw_tactical_line(players_list, line_color_bgr, halo_color_bgr):
+            if len(players_list) < 2:
+                return
+
+            # Draw halo shadow line
+            for i in range(len(players_list) - 1):
+                p1 = (players_list[i][0], players_list[i][1])
+                p2 = (players_list[i + 1][0], players_list[i + 1][1])
+                cv2.line(frame, p1, p2, halo_color_bgr, 4, cv2.LINE_AA)
+
+            # Draw core bright tactical line
+            for i in range(len(players_list) - 1):
+                p1 = (players_list[i][0], players_list[i][1])
+                p2 = (players_list[i + 1][0], players_list[i + 1][1])
+                cv2.line(frame, p1, p2, line_color_bgr, 2, cv2.LINE_AA)
+
+            # Draw anchor turf node at each player connecting the line
+            for p in players_list:
+                cx, cy = p[0], p[1]
+                cv2.ellipse(frame, (cx, cy), (12, 5), 0, 0, 360, line_color_bgr, 2, cv2.LINE_AA)
+                cv2.circle(frame, (cx, cy), 3, (255, 255, 255), -1, cv2.LINE_AA)
+
+        # Team A formation lines (e.g. Cyan / Gold)
         if len(team_a_coords) >= 3:
             sorted_by_x = sorted(team_a_coords, key=lambda x: x[0])
             backline_a = sorted(sorted_by_x[:len(sorted_by_x)//2], key=lambda x: x[1])
             midline_a = sorted(sorted_by_x[len(sorted_by_x)//2:], key=lambda x: x[1])
 
-            if len(backline_a) >= 2:
-                for i in range(len(backline_a) - 1):
-                    p1 = (backline_a[i][0], backline_a[i][1])
-                    p2 = (backline_a[i+1][0], backline_a[i+1][1])
-                    cv2.line(frame, p1, p2, (255, 220, 100), 2, cv2.LINE_AA)
+            draw_tactical_line(backline_a, (255, 225, 100), (140, 100, 20))
+            draw_tactical_line(midline_a, (120, 245, 255), (20, 120, 140))
 
-            if len(midline_a) >= 2:
-                for i in range(len(midline_a) - 1):
-                    p1 = (midline_a[i][0], midline_a[i][1])
-                    p2 = (midline_a[i+1][0], midline_a[i+1][1])
-                    cv2.line(frame, p1, p2, (255, 220, 100), 1, cv2.LINE_AA)
-
-        # Team B formation line
+        # Team B formation lines (e.g. Coral / Orange)
         if len(team_b_coords) >= 3:
             sorted_by_x_b = sorted(team_b_coords, key=lambda x: x[0], reverse=True)
             backline_b = sorted(sorted_by_x_b[:len(sorted_by_x_b)//2], key=lambda x: x[1])
             midline_b = sorted(sorted_by_x_b[len(sorted_by_x_b)//2:], key=lambda x: x[1])
 
-            if len(backline_b) >= 2:
-                for i in range(len(backline_b) - 1):
-                    p1 = (backline_b[i][0], backline_b[i][1])
-                    p2 = (backline_b[i+1][0], backline_b[i+1][1])
-                    cv2.line(frame, p1, p2, (100, 180, 255), 2, cv2.LINE_AA)
-
-            if len(midline_b) >= 2:
-                for i in range(len(midline_b) - 1):
-                    p1 = (midline_b[i][0], midline_b[i][1])
-                    p2 = (midline_b[i+1][0], midline_b[i+1][1])
-                    cv2.line(frame, p1, p2, (100, 180, 255), 1, cv2.LINE_AA)
+            draw_tactical_line(backline_b, (100, 170, 255), (30, 60, 160))
+            draw_tactical_line(midline_b, (180, 130, 255), (70, 30, 150))
 
         # -------------------------------------------------------------
-        # 2. BOUNDING BOXES, TURF ANCHORS & JERSEY NUMBERS
-        # -------------------------------------------------------------
-        def draw_player(item, color_bgr):
-            cx, cy, x1, y1, x2, y2, p_info, trk_id = item
-            ew = max(10, (x2 - x1) // 2 + 3)
-            # Anchor ellipse at the feet
-            cv2.ellipse(frame, (cx, y2), (ew, 5), 0, 0, 360, color_bgr, 2, cv2.LINE_AA)
-            # Bounding box around player
-            cv2.rectangle(frame, (x1, y1), (x2, y2), color_bgr, 2)
-
-            num = p_info.get("number")
-            name = p_info.get("name", f"Player #{trk_id}")
-            if num is not None:
-                tag = f"#{num} {name}"
-            else:
-                tag = f"{name}"  # No hallucinated number! Clean node if occluded
-
-            (tw, th), _ = cv2.getTextSize(tag, cv2.FONT_HERSHEY_SIMPLEX, 0.35, 1)
-            cv2.rectangle(frame, (cx - tw // 2 - 3, y1 - th - 5), (cx + tw // 2 + 3, y1 - 2), (15, 23, 42), -1)
-            cv2.rectangle(frame, (cx - tw // 2 - 3, y1 - th - 5), (cx + tw // 2 + 3, y1 - 2), color_bgr, 1)
-            cv2.putText(frame, tag, (cx - tw // 2, y1 - 4), cv2.FONT_HERSHEY_SIMPLEX, 0.35, (255, 255, 255), 1, cv2.LINE_AA)
-
-        for item in team_a_coords:
-            draw_player(item, color_a_bgr)
-
-        for item in team_b_coords:
-            draw_player(item, color_b_bgr)
-
-        # -------------------------------------------------------------
-        # 3. BALL INDICATOR
+        # BALL INDICATOR
         # -------------------------------------------------------------
         if ball_box is not None:
             bx1, by1, bx2, by2 = ball_box

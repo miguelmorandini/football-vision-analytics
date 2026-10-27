@@ -103,7 +103,7 @@ def render_header():
         <span class="main-title">Football Vision Analytics — Brasileirão Série A</span>
     </div>
     <div class="sub-title">
-        Visão Computacional Aplicada ao Futebol: Detecção de Jogadores, Bounding Boxes, Linhas Táticas e Números das Camisas
+        Visão Computacional Aplicada ao Futebol: Linhas de Formação Tática em Tempo Real e Análise de Elenco
     </div>
     """,
         unsafe_allow_html=True,
@@ -153,9 +153,9 @@ def main():
     team_b = selected_match["team_b"]
 
     with col_video:
-        st.subheader("📺 Transmissão com Visão Computacional em Tempo Real")
+        st.subheader("📺 Transmissão com Linhas de Formação em Tempo Real")
         st.caption(
-            "Bounding boxes, tags dos jogadores, números das camisas e **linhas de formação tática** conectando defesa e meio-campo renderizados diretamente no campo."
+            "Linhas táticas conectando os setores defensivo e de meio-campo diretamente sobre o gramado da transmissão oficial."
         )
 
         if video_path.exists():
@@ -166,11 +166,11 @@ def main():
         # Live vision telemetry metrics
         v_col1, v_col2, v_col3 = st.columns(3)
         with v_col1:
-            st.metric(label="Taxa de Rastreamento", value="25 FPS (Real-time)")
+            st.metric(label="Taxa de Rastreamento", value="30 FPS (Tempo Real)")
         with v_col2:
-            st.metric(label="Linhas de Formação", value="Defesa & Meio Conectados")
+            st.metric(label="Linhas Táticas", value="Zaga & Meio Conectados")
         with v_col3:
-            st.metric(label="Regra OCR Camisas", value="Filtro Rígido de Confiança")
+            st.metric(label="Exibição em Vídeo", value="Clean Broadcast")
 
     with col_tactics:
         st.subheader("📋 Formações & Elenco")

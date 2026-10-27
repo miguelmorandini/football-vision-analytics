@@ -1,7 +1,8 @@
-"""Synchronized HTML5 Video and 2D Pitch Radar Player.
+"""Synchronized Native HTML5 Video and 2D Pitch Radar Player.
 
-Guarantees 100% ad-free playback and frame-by-frame real-time synchronization
-between the video player and the 2D pitch radar canvas.
+Guarantees 100% native real-time frame synchronization:
+When the user clicks PLAY on the video, the 2D pitch radar animates synchronously at 60 FPS.
+When the user pauses or seeks the video, the 2D radar responds instantly.
 """
 
 from __future__ import annotations
@@ -17,16 +18,7 @@ def build_synced_player_html(
     telemetry: Dict[str, Any],
     theme: str = "dark"
 ) -> str:
-    """Build a standalone, responsive HTML5 widget synchronizing video playback with 2D pitch radar canvas.
-
-    Args:
-        video_path: Path to the local H.264 MP4 video file.
-        telemetry: Dictionary containing match metadata and timeline tracking data.
-        theme: 'dark' or 'green' styling for pitch.
-
-    Returns:
-        Complete HTML/CSS/JavaScript string for Streamlit components.
-    """
+    """Build an HTML5 widget pairing native video playback with real-time 2D pitch radar canvas."""
     video_bytes = Path(video_path).read_bytes()
     b64_video = base64.b64encode(video_bytes).decode("utf-8")
     data_uri = f"data:video/mp4;base64,{b64_video}"
@@ -52,7 +44,7 @@ def build_synced_player_html(
     body {{
         background: {bg_color};
         color: #F8FAFC;
-        padding: 8px;
+        padding: 6px;
     }}
     .player-container {{
         display: grid;
@@ -86,17 +78,20 @@ def build_synced_player_html(
     .status-badge {{
         font-size: 0.75rem;
         font-weight: 600;
-        padding: 3px 8px;
+        padding: 3px 10px;
         border-radius: 999px;
         background: #0284C7;
         color: #FFF;
+        transition: background 0.3s ease;
     }}
     video {{
         width: 100%;
+        height: auto;
         border-radius: 8px;
         background: #000;
         outline: none;
-        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+        display: block;
     }}
     canvas {{
         width: 100%;
@@ -104,6 +99,7 @@ def build_synced_player_html(
         border-radius: 8px;
         background: {pitch_bg};
         display: block;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
     }}
     .live-badges {{
         display: flex;
@@ -126,32 +122,32 @@ def build_synced_player_html(
 <body>
 
 <div class="player-container">
-    <!-- Left: Ad-Free Broadcast Video -->
+    <!-- Left: Native Broadcast Video Player -->
     <div class="card">
         <div class="card-header">
-            <div class="card-title">📺 Match Broadcast (Ad-Free)</div>
-            <div id="videoStatus" class="status-badge">Paused</div>
+            <div class="card-title">📺 Transmissão do Jogo</div>
+            <div id="videoStatus" class="status-badge">Pronto para Tocar</div>
         </div>
         <video id="footballVideo" controls playsinline preload="auto">
             <source src="{data_uri}" type="video/mp4">
-            Your browser does not support HTML5 video.
+            Seu navegador não suporta a tag de vídeo HTML5.
         </video>
         <div class="live-badges">
-            <span id="timeDisplay" class="time-badge">⏱️ Time: 0.00s</span>
-            <span id="frameDisplay" style="color: #94A3B8;">Frame: 0</span>
+            <span id="timeDisplay" class="time-badge">⏱️ Tempo: 0.00s</span>
+            <span id="syncNotice" style="color: #34D399;">⚡ Sincronizado ao Vídeo</span>
         </div>
     </div>
 
-    <!-- Right: Synchronized 2D Pitch Radar -->
+    <!-- Right: Real-Time 2D Pitch Radar -->
     <div class="card">
         <div class="card-header">
-            <div class="card-title">🗺️ Real-Time 2D Tactical Radar</div>
-            <div class="status-badge" style="background: #10B981;">⚡ Synced 60 FPS</div>
+            <div class="card-title">🗺️ Mapa Tático 2D em Tempo Real</div>
+            <div id="radarStatus" class="status-badge" style="background: #10B981;">⚡ Sincronizado 60 FPS</div>
         </div>
         <canvas id="pitchCanvas" width="640" height="420"></canvas>
         <div class="live-badges">
-            <span id="formationA" class="badge-a">🔵 Team A</span>
-            <span id="formationB" class="badge-b">🔴 Team B</span>
+            <span id="formationA" class="badge-a">🔵 Time A</span>
+            <span id="formationB" class="badge-b">🔴 Time B</span>
         </div>
     </div>
 </div>
@@ -162,8 +158,8 @@ def build_synced_player_html(
     const canvas = document.getElementById('pitchCanvas');
     const ctx = canvas.getContext('2d');
     const videoStatus = document.getElementById('videoStatus');
+    const radarStatus = document.getElementById('radarStatus');
     const timeDisplay = document.getElementById('timeDisplay');
-    const frameDisplay = document.getElementById('frameDisplay');
     const formationA = document.getElementById('formationA');
     const formationB = document.getElementById('formationB');
 
@@ -245,7 +241,7 @@ def build_synced_player_html(
         const players = frameData.players || [];
         const ball = frameData.ball;
 
-        // Draw tactical line connections for Team A (Defenders & Midfielders)
+        // Tactical connection chains
         const teamAPlayers = players.filter(p => p.team_id === 'team_a');
         const teamBPlayers = players.filter(p => p.team_id === 'team_b');
 
@@ -265,16 +261,15 @@ def build_synced_player_html(
             ctx.setLineDash([]);
         }}
 
-        // Connect defenders (x < 35 for Team A, x > 70 for Team B)
-        const defA = teamAPlayers.filter(p => p.pitch_x < 38 && p.pitch_x > 12).sort((a,b) => a.pitch_y - b.pitch_y);
-        const midA = teamAPlayers.filter(p => p.pitch_x >= 38 && p.pitch_x < 65).sort((a,b) => a.pitch_y - b.pitch_y);
-        connectLine(defA, "rgba(96, 165, 250, 0.4)");
-        connectLine(midA, "rgba(96, 165, 250, 0.4)");
+        const defA = teamAPlayers.filter(p => p.pitch_x < 36 && p.pitch_x > 10).sort((a,b) => a.pitch_y - b.pitch_y);
+        const midA = teamAPlayers.filter(p => p.pitch_x >= 36 && p.pitch_x < 65).sort((a,b) => a.pitch_y - b.pitch_y);
+        connectLine(defA, "rgba(96, 165, 250, 0.45)");
+        connectLine(midA, "rgba(96, 165, 250, 0.45)");
 
-        const defB = teamBPlayers.filter(p => p.pitch_x > 67 && p.pitch_x < 93).sort((a,b) => a.pitch_y - b.pitch_y);
-        const midB = teamBPlayers.filter(p => p.pitch_x <= 67 && p.pitch_x > 40).sort((a,b) => a.pitch_y - b.pitch_y);
-        connectLine(defB, "rgba(248, 113, 113, 0.4)");
-        connectLine(midB, "rgba(248, 113, 113, 0.4)");
+        const defB = teamBPlayers.filter(p => p.pitch_x > 69 && p.pitch_x < 95).sort((a,b) => a.pitch_y - b.pitch_y);
+        const midB = teamBPlayers.filter(p => p.pitch_x <= 69 && p.pitch_x > 40).sort((a,b) => a.pitch_y - b.pitch_y);
+        connectLine(defB, "rgba(248, 113, 113, 0.45)");
+        connectLine(midB, "rgba(248, 113, 113, 0.45)");
 
         // Draw Players
         for (const p of players) {{
@@ -285,7 +280,6 @@ def build_synced_player_html(
             const mainColor = isTeamA ? '#1E40AF' : '#DC2626';
             const edgeColor = isTeamA ? '#93C5FD' : '#FCA5A5';
 
-            // Outer Circle
             ctx.fillStyle = mainColor;
             ctx.beginPath();
             ctx.arc(cx, cy, 10, 0, Math.PI * 2);
@@ -295,8 +289,8 @@ def build_synced_player_html(
             ctx.lineWidth = 1.8;
             ctx.stroke();
 
-            // Strict User Guideline:
-            // Display jersey number ONLY if detected/clear; otherwise leave blank!
+            // Strict user guideline:
+            // Display jersey number ONLY if confirmed/readable; otherwise leave node blank!
             if (p.jersey_number !== null && p.jersey_number !== undefined) {{
                 ctx.fillStyle = '#FFFFFF';
                 ctx.font = 'bold 9px sans-serif';
@@ -311,13 +305,11 @@ def build_synced_player_html(
             const bx = toCanvasX(ball.pitch_x);
             const by = toCanvasY(ball.pitch_y);
 
-            // Glowing ring
             ctx.fillStyle = 'rgba(250, 204, 21, 0.35)';
             ctx.beginPath();
             ctx.arc(bx, by, 11, 0, Math.PI * 2);
             ctx.fill();
 
-            // Ball center
             ctx.fillStyle = '#FFFFFF';
             ctx.beginPath();
             ctx.arc(bx, by, 4.5, 0, Math.PI * 2);
@@ -338,25 +330,27 @@ def build_synced_player_html(
 
         renderFrame(frameData);
 
-        // Update Text Indicators
-        timeDisplay.innerText = `⏱️ Time: ${{curTime.toFixed(2)}}s`;
-        frameDisplay.innerText = `Frame: ${{frameIdx}} / ${{telemetry.timeline.length - 1}}`;
+        timeDisplay.innerText = `⏱️ Tempo: ${{curTime.toFixed(1)}}s`;
 
         if (!video.paused && !video.ended) {{
             requestAnimationFrame(syncLoop);
         }}
     }}
 
-    // Event Listeners for True Real-Time Video & 2D Radar Synchronization
+    // Native Events: Directly Coupled to Video Player
     video.addEventListener('play', () => {{
-        videoStatus.innerText = 'Playing';
+        videoStatus.innerText = 'Em Reprodução (Sincronizado)';
         videoStatus.style.background = '#10B981';
+        radarStatus.innerText = '⚡ Radar Movendo em Tempo Real';
+        radarStatus.style.background = '#10B981';
         requestAnimationFrame(syncLoop);
     }});
 
     video.addEventListener('pause', () => {{
-        videoStatus.innerText = 'Paused';
+        videoStatus.innerText = 'Pausado';
         videoStatus.style.background = '#64748B';
+        radarStatus.innerText = 'Pausado';
+        radarStatus.style.background = '#64748B';
     }});
 
     video.addEventListener('timeupdate', () => {{
@@ -370,11 +364,13 @@ def build_synced_player_html(
     }});
 
     video.addEventListener('ended', () => {{
-        videoStatus.innerText = 'Finished';
-        videoStatus.style.background = '#F59E0B';
+        videoStatus.innerText = 'Finalizado';
+        videoStatus.style.background = '#64748B';
+        radarStatus.innerText = 'Pausado';
+        radarStatus.style.background = '#64748B';
     }});
 
-    // Initialize with formation labels from telemetry
+    // Initialize labels
     if (telemetry.team_a) {{
         formationA.innerText = `🔵 ${{telemetry.team_a.name}}: ${{telemetry.team_a.formation}}`;
     }}
@@ -382,7 +378,7 @@ def build_synced_player_html(
         formationB.innerText = `🔴 ${{telemetry.team_b.name}}: ${{telemetry.team_b.formation}}`;
     }}
 
-    // Initial render at frame 0
+    // Initial render
     syncLoop();
 </script>
 </body>

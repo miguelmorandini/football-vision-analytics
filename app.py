@@ -13,11 +13,12 @@ from typing import Any, Dict, List, Optional
 import pandas as pd
 import streamlit as st
 
+from src.config import VIDEOS_DIR
 from src.tactics.brasileirao_telemetry import (
     BRASILEIRAO_MATCHES,
     generate_live_telemetry_for_match,
 )
-from src.visualization.youtube_synced_player import build_youtube_synced_player_html
+from src.visualization.synced_player import build_synced_player_html
 
 # Page Configuration
 st.set_page_config(
@@ -73,7 +74,7 @@ def render_header():
         <span class="main-title">Football Vision Analytics — Brasileirão Série A</span>
     </div>
     <div class="sub-title">
-        Vídeos e Melhores Momentos do Brasileirão • Mapa Tático 2D com Sincronização em Tempo Real
+        Vídeos e Melhores Momentos do Brasileirão • Mapa Tático 2D Sincronizado ao Play em Tempo Real
     </div>
     """, unsafe_allow_html=True)
 
@@ -99,6 +100,7 @@ def main():
         theme = st.selectbox("🎨 Tema do Gramado:", ["dark", "green"], index=0)
 
     selected_match = BRASILEIRAO_MATCHES[chosen_idx]
+    video_path = VIDEOS_DIR / selected_match["video_file"]
     telemetry = get_cached_telemetry(selected_match["id"])
 
     # Section 2: Tactical Metric Summary Badges
@@ -143,14 +145,17 @@ def main():
     # Section 3: The Synchronized Side-by-Side View (Video Left, Radar Right)
     st.write("---")
     st.write("### 📺 2. Visualização Lado a Lado: Vídeo da Partida e Mapa Tático 2D")
-    st.caption("Clique no botão **▶️ Play Tático & Vídeo** ou diretamente no player do YouTube para ver o mapa tático 2D ao lado se movimentar em tempo real! Arraste a barra para avançar ou retroceder.")
+    st.caption("Dê o **Play** no vídeo à esquerda: o mapa tático 2D ao lado **acompanha o vídeo em tempo real a 60 FPS**! Pause ou navegue na barra do vídeo para ver a sincronização imediata.")
 
-    player_html = build_youtube_synced_player_html(
-        youtube_id=selected_match["youtube_id"],
-        telemetry=telemetry,
-        theme=theme
-    )
-    st.components.v1.html(player_html, height=580)
+    if video_path.exists():
+        player_html = build_synced_player_html(
+            video_path=str(video_path),
+            telemetry=telemetry,
+            theme=theme
+        )
+        st.components.v1.html(player_html, height=540)
+    else:
+        st.error(f"Vídeo da partida não encontrado: {video_path}")
 
     # Section 4: Squad Lineups & Jersey Numbers (OCR Recognition Status)
     st.write("---")
@@ -169,7 +174,7 @@ def main():
                 "Jogador": p.get("name"),
                 "Posição Tática": p.get("role"),
                 "Número na Camisa": f"#{p['number']}" if p.get("number") is not None else "⚠️ Sem Número (Ilegível/Obstruído)",
-                "Posição no Campo (X, Y)": f"{p.get('base_x')}m, {p.get('base_y')}m",
+                "Posição Base (X, Y)": f"{p.get('base_x')}m, {p.get('base_y')}m",
                 "Status de Reconhecimento": "✅ Identificado no Radar" if p.get("number") is not None else "⚪ Marcador Limpo (Sem Palpite)"
             }
             for p in team_a["roster"]
@@ -183,7 +188,7 @@ def main():
                 "Jogador": p.get("name"),
                 "Posição Tática": p.get("role"),
                 "Número na Camisa": f"#{p['number']}" if p.get("number") is not None else "⚠️ Sem Número (Ilegível/Obstruído)",
-                "Posição no Campo (X, Y)": f"{p.get('base_x')}m, {p.get('base_y')}m",
+                "Posição Base (X, Y)": f"{p.get('base_x')}m, {p.get('base_y')}m",
                 "Status de Reconhecimento": "✅ Identificado no Radar" if p.get("number") is not None else "⚪ Marcador Limpo (Sem Palpite)"
             }
             for p in team_b["roster"]

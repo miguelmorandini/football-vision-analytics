@@ -1,7 +1,7 @@
 """Brasileirão Série A match catalog and tactical telemetry generator.
 
 Exclusively features official matches from the Brazilian Serie A with clean titles
-and high-frequency 60 FPS tactical trajectory telemetry.
+and high-frequency 60 FPS tactical trajectory telemetry linked to genuine broadcast clips.
 """
 
 from __future__ import annotations
@@ -14,6 +14,7 @@ BRASILEIRAO_MATCHES: List[Dict[str, Any]] = [
         "id": "pal_fla_1x1",
         "title": "Palmeiras 1 x 1 Flamengo",
         "competition": "Brasileirão Série A",
+        "video_file": "br_palmeiras_flamengo.mp4",
         "youtube_id": "37ieZKq9gnQ",
         "team_a": {
             "name": "Palmeiras",
@@ -56,6 +57,7 @@ BRASILEIRAO_MATCHES: List[Dict[str, Any]] = [
         "id": "fla_pal_0x3",
         "title": "Flamengo 0 x 3 Palmeiras",
         "competition": "Brasileirão Série A",
+        "video_file": "br_flamengo_palmeiras.mp4",
         "youtube_id": "CWFlRPmg9-8",
         "team_a": {
             "name": "Flamengo",
@@ -98,6 +100,7 @@ BRASILEIRAO_MATCHES: List[Dict[str, Any]] = [
         "id": "cor_fla_2x1",
         "title": "Corinthians 2 x 1 Flamengo",
         "competition": "Brasileirão Série A",
+        "video_file": "br_corinthians_flamengo.mp4",
         "youtube_id": "0OLuPL3ul3A",
         "team_a": {
             "name": "Corinthians",
@@ -140,6 +143,7 @@ BRASILEIRAO_MATCHES: List[Dict[str, Any]] = [
         "id": "cap_cor_1x1",
         "title": "Athletico-PR 1 x 1 Corinthians",
         "competition": "Brasileirão Série A",
+        "video_file": "br_athletico_corinthians.mp4",
         "youtube_id": "HoVV0tggnJk",
         "team_a": {
             "name": "Athletico-PR",
@@ -182,6 +186,7 @@ BRASILEIRAO_MATCHES: List[Dict[str, Any]] = [
         "id": "vas_bot_1x1",
         "title": "Vasco 1 x 1 Botafogo",
         "competition": "Brasileirão Série A",
+        "video_file": "br_vasco_botafogo.mp4",
         "youtube_id": "d9d_odmG_EA",
         "team_a": {
             "name": "Vasco",
@@ -217,48 +222,6 @@ BRASILEIRAO_MATCHES: List[Dict[str, Any]] = [
                 {"track_id": 20, "number": 23, "name": "Thiago Almada", "role": "AM", "base_x": 52.0, "base_y": 34.0},
                 {"track_id": 21, "number": 10, "name": "Savarino", "role": "LW", "base_x": 50.0, "base_y": 54.0},
                 {"track_id": 22, "number": 99, "name": "Igor Jesus", "role": "ST", "base_x": 45.0, "base_y": 34.0},
-            ]
-        }
-    },
-    {
-        "id": "pal_fla_0x0",
-        "title": "Palmeiras 0 x 0 Flamengo",
-        "competition": "Brasileirão Série A",
-        "youtube_id": "765TpbZQ4Rk",
-        "team_a": {
-            "name": "Palmeiras",
-            "formation": "4-3-3 Attack",
-            "primary_color": "#16A34A",
-            "roster": [
-                {"track_id": 1, "number": 21, "name": "Weverton", "role": "GK", "base_x": 7.0, "base_y": 34.0},
-                {"track_id": 2, "number": 2, "name": "Marcos Rocha", "role": "RB", "base_x": 26.0, "base_y": 12.0},
-                {"track_id": 3, "number": 15, "name": "Gustavo Gómez", "role": "CB", "base_x": 22.0, "base_y": 26.0},
-                {"track_id": 4, "number": 26, "name": "Murilo", "role": "CB", "base_x": 22.0, "base_y": 42.0},
-                {"track_id": 5, "number": None, "name": "Piquerez", "role": "LB", "base_x": 26.0, "base_y": 56.0},
-                {"track_id": 6, "number": 5, "name": "Aníbal Moreno", "role": "DM", "base_x": 42.0, "base_y": 34.0},
-                {"track_id": 7, "number": 8, "name": "Zé Rafael", "role": "CM", "base_x": 55.0, "base_y": 22.0},
-                {"track_id": 8, "number": 23, "name": "Raphael Veiga", "role": "AM", "base_x": 58.0, "base_y": 44.0},
-                {"track_id": 9, "number": 41, "name": "Estêvão", "role": "RW", "base_x": 75.0, "base_y": 14.0},
-                {"track_id": 10, "number": 42, "name": "Flaco López", "role": "ST", "base_x": 78.0, "base_y": 34.0},
-                {"track_id": 11, "number": 9, "name": "Felipe Anderson", "role": "LW", "base_x": 75.0, "base_y": 54.0},
-            ]
-        },
-        "team_b": {
-            "name": "Flamengo",
-            "formation": "4-2-3-1 Modern",
-            "primary_color": "#DC2626",
-            "roster": [
-                {"track_id": 12, "number": 1, "name": "Rossi", "role": "GK", "base_x": 98.0, "base_y": 34.0},
-                {"track_id": 13, "number": None, "name": "Wesley", "role": "RB", "base_x": 78.0, "base_y": 14.0},
-                {"track_id": 14, "number": 3, "name": "Léo Ortiz", "role": "CB", "base_x": 82.0, "base_y": 27.0},
-                {"track_id": 15, "number": 4, "name": "Léo Pereira", "role": "CB", "base_x": 82.0, "base_y": 41.0},
-                {"track_id": 16, "number": 26, "name": "Alex Sandro", "role": "LB", "base_x": 78.0, "base_y": 54.0},
-                {"track_id": 17, "number": 5, "name": "Pulgar", "role": "DM", "base_x": 66.0, "base_y": 28.0},
-                {"track_id": 18, "number": 52, "name": "Evertton Araújo", "role": "DM", "base_x": 66.0, "base_y": 40.0},
-                {"track_id": 19, "number": 8, "name": "Gerson", "role": "RM", "base_x": 54.0, "base_y": 16.0},
-                {"track_id": 20, "number": 14, "name": "Arrascaeta", "role": "AM", "base_x": 52.0, "base_y": 34.0},
-                {"track_id": 21, "number": 27, "name": "Bruno Henrique", "role": "LM", "base_x": 54.0, "base_y": 52.0},
-                {"track_id": 22, "number": 99, "name": "Gabigol", "role": "ST", "base_x": 46.0, "base_y": 34.0},
             ]
         }
     }
